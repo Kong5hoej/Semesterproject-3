@@ -1,0 +1,117 @@
+﻿@page "/login"
+@using System.Security.Cryptography
+@using BlazorApp.Auth
+@using BlazorApp.Services
+@inject IHttpUsersService UsersService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthProvider
+
+<AuthorizeView>
+    <Authorized>
+        <p>Hej og velkommen, @context.User.Identity.Name</p> 
+        <div class="m-3">
+            <button class="btn btn-primary" @onclick="LogoutAsync">Logout</button>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <form @onsubmit="OnSubmitAsync" @onsubmit:preventDefault="true">
+
+        <div class="h-100 d-flex flex-column align-items-center justify-content-center">
+            <h3 class="m-4">Login</h3>
+
+            <div class="form-group m-2 w-25">
+                <label>Brugernavn</label>
+                <input @ref ="usernameInput" @bind="Username" type="text" class="form-control"
+                       placeholder="Indtast Brugernavn"
+                       required>
+            </div>
+
+            <div class="form-group m-2 w-25">
+                <label>Adgangskode</label>
+                <input @bind="Password" type="password" class="form-control"
+                       placeholder="Indtast Adgangskode"
+                       required>
+            </div>
+
+            <div class="m-3">
+                <NavLink href="/createUser">Intet login? Opret dig selv istedet
+                </NavLink>
+            </div>
+
+            @if (!string.IsNullOrEmpty(ErrorMessage)){
+                <div class="m-3">
+                    <p class="text-danger">@ErrorMessage</p>
+                </div>
+            }
+
+            <div class="m-3">
+                <button class="btn btn-primary" @onclick="LoginAsync">Login</button>
+            </div>
+        </div>
+        </form>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private string Username{ get; set; } = "";
+    private string Password{ get; set; } = "";
+
+    private string? ErrorMessage{ get; set; }
+
+    private async Task LoginAsync()
+    {
+        ErrorMessage = "";
+        if (string.IsNullOrEmpty(Username))
+            ErrorMessage = "Brugernavnet må ikke være tomt";
+        if (string.IsNullOrEmpty(Password))
+            ErrorMessage = "Adgangskoden må ikke være tomt";
+
+        if (string.IsNullOrEmpty(ErrorMessage))
+        {
+        byte[] inputBytes = System.Text.Encoding.UTF8.GetBytes(Password);
+        SHA256 sha3 = SHA256.Create();
+        string hashedPassword = Convert.ToBase64String(sha3.ComputeHash(inputBytes));
+
+        UserAccessDTO userAccessDto = new UserAccessDTO() { Username = Username, Password = hashedPassword };
+        try
+        {
+            await GetAuthProvider().LoginAsync(userAccessDto);
+            NavigationManager.NavigateTo("/");
+        }
+        catch (Exception e)
+        {
+            ErrorMessage = "Brugernavnet eller adgangskoden er forkert.";
+        }
+    }
+}
+    
+    private async Task LogoutAsync(){
+        ErrorMessage = "";
+        try{
+            await GetAuthProvider().Logout();
+        } catch (Exception e){
+            ErrorMessage = $"Error: {e.Message}";
+        }
+    }
+    
+    private AuthProvider GetAuthProvider(){
+        if (AuthProvider is not AuthProvider provider) throw new Exception("Cannot get Auth Provider");
+        return provider;
+    }
+
+    //logger ind med enter
+    private async Task OnSubmitAsync()
+    {
+        await LoginAsync();
+    }
+
+    private ElementReference usernameInput;
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await usernameInput.FocusAsync();
+        }
+    }
+}

@@ -1,0 +1,499 @@
+﻿@page "/user/{Profile}"
+@using BlazorApp.Auth
+@using BlazorApp.Services
+@using Domain
+@using Microsoft.AspNetCore.Http.Features
+@using Microsoft.AspNetCore.Mvc.ActionConstraints
+@using _Imports = BlazorBootstrap._Imports
+@inject IHttpUsersService UserService
+@inject IHttpPostsService PostService
+@inject IHttpChatsService ChatService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthProvider
+@inject IHttpCategoriesService CategoriesService
+
+<AuthorizeView>
+    <Authorized>
+        @if (CurrentUsername != Profile){
+            <ToggleFavoriteUserButton
+                Username="@CurrentUsername"
+                FavoriteUser="@Profile"
+                IsFavorite="@(FavoritedUsers.Contains(Profile))"
+                Callback="(favorited) => { 
+                    if (favorited){
+                        FavoritedUsers.Add(Profile);
+                    }
+                    else{
+                        FavoritedUsers.Remove(Profile);
+                    }
+                    StateHasChanged(); }"
+            />
+        }
+    </Authorized>
+</AuthorizeView>
+
+@if (Profile == CurrentUsername){
+    <div class="d-flex justify-content-between align-items-center w-100">
+        <h3 class="mb-0">Hej @CurrentUsername</h3>
+        <button class="btn btn-primary" @onclick="LogoutAsync">Logout</button>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(ErrorMessage)){
+    <div class="alert alert-danger">@ErrorMessage</div>
+}
+<br/>
+<div class="row">
+    <div class="col-sm-3">
+        <label for>Brugernavn:</label>
+        <br/>
+        <input type="text" @bind="Username"
+               disabled="true"/>
+    </div>
+</div>
+
+@if (Profile == CurrentUsername){
+    <div class="column">
+        <span class="col-sm-3">
+            <label for>Postnummer:</label>
+            <br/>
+            <input type="text" @bind="ZipCode"/>
+        </span>
+        <span class="m-3">
+            <button class="btn btn-primary" @onclick="EditUser">Gem nyt
+                postnummer
+            </button>
+        </span>
+    </div>
+    
+    <!-- Følg Kategorier -->
+    <div class="col-sm-4 mt-3 mb-3 p-2" style="border:1px solid lightgray; background-color: lightgrey;">
+        <div class="row d-flex align-items-baseline justify-content-between gap-3">
+            <div class="categoryfield">
+                <label for="validationCustom09" style="font-size: 18px;">Fulgte Kategorier:</label>
+            </div>
+        </div>
+
+        <div class="row d-flex align-items-baseline justify-content-between gap-3">
+            <div class="categoryfield">
+                <ul style="list-style-type: none;">
+                    @foreach (var item in AllExistingCats.Select((cat, index) => new { cat, index }))
+                    {
+                        <li>
+                            <span>
+                                @item.cat.Name
+                                <input type="checkbox"
+                                       @bind="ChangingCategories[item.index]" />
+                            </span>
+                        </li>
+                    }
+                </ul>
+            </div>
+
+            <div class="add-post">
+                <button class="btn btn-primary w-100" @onclick="AddFavCats">Følg Kategorier</button>
+            </div>
+        </div>
+    </div>
+}
+
+<br/>
+
+<Tabs>
+    <Tab Title="Opslag" IsActive="true">
+        <Content>
+            <table class="table">
+                <colgroup>
+                    <col style="width:50%;"/> @* Title column: flexible *@
+                    <col style="width:15%;"/> @* Postnummer *@
+                    <col style="width:15%;"/> @* Pris *@
+                    <col style="width:20%;"/> @* Dato or owner *@
+                </colgroup>
+                <thead>
+                <tr>
+                    <th>Titel</th>
+                    <th>Postnummer</th>
+                    <th>Pris</th>
+                    <th>Dato</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var p in filteredPosts.Where(p => p.State == 1)){
+                    <tr style="cursor:pointer"
+                        @onclick="@(() => GoToPost(p.Id))">
+                        <td>@p.Title</td>
+                        <td>@p.ZipCode</td>
+                        <td>@p.Price</td>
+                        <td>@GetRelativeTime(p.Timestamp)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </Content>
+    </Tab>
+    @if (Profile == CurrentUsername){
+        <Tab Title="Handlet" OnClick="@GetContactedPosts">
+            <Content>
+                <table class="table">
+                    <colgroup>
+                        <col style="width:50%;"/> @* Title column: flexible *@
+                        <col style="width:15%;"/> @* Postnummer *@
+                        <col style="width:15%;"/> @* Pris *@
+                        <col style="width:20%;"/> @* Dato or owner *@
+                    </colgroup>
+                    <thead>
+                    <tr>
+                        <th>Titel</th>
+                        <th>Postnummer</th>
+                        <th>Pris</th>
+                        <th>Dato</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var p in contactedPosts.Where(p => p.State == 1)){
+                        <tr style="cursor:pointer"
+                            @onclick="@(() => GoToPost(p.Id))">
+                            <td>@p.Title</td>
+                            <td>@p.ZipCode</td>
+                            <td>@p.Price</td>
+                            <td>@GetRelativeTime(p.Timestamp)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </Content>
+        </Tab>
+        <Tab Title="Inaktive">
+            <Content>
+                <table class="table">
+                    <colgroup>
+                        <col style="width:50%;"/> @* Title column: flexible *@
+                        <col style="width:15%;"/> @* Postnummer *@
+                        <col style="width:15%;"/> @* Pris *@
+                        <col style="width:20%;"/> @* Dato or owner *@
+                    </colgroup>
+                    <thead>
+                    <tr>
+                        <th>Titel</th>
+                        <th>Postnummer</th>
+                        <th>Pris</th>
+                        <th>Dato</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var p in filteredPosts.Where(p => p.State == 0)){
+                        <tr style="cursor:pointer"
+                            @onclick="@(() => GoToPost(p.Id))">
+                            <td>@p.Title</td>
+                            <td>@p.ZipCode</td>
+                            <td>@p.Price</td>
+                            <td>@GetRelativeTime(p.Timestamp)</td>
+                        </tr>
+                    }
+
+                    </tbody>
+                </table>
+            </Content>
+        </Tab>
+        <Tab Title="Lukket">
+            <Content>
+                <table class="table">
+                    <colgroup>
+                        <col style="width:50%;"/> @* Title column: flexible *@
+                        <col style="width:15%;"/> @* Postnummer *@
+                        <col style="width:15%;"/> @* Pris *@
+                        <col style="width:20%;"/> @* Dato or owner *@
+                    </colgroup>
+                    <thead>
+                    <tr>
+                        <th>Titel</th>
+                        <th>Postnummer</th>
+                        <th>Pris</th>
+                        <th>Dato</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var p in filteredPosts.Where(p => p.State == 2)){
+                        <tr style="cursor:pointer"
+                            @onclick="@(() => GoToPost(p.Id))">
+                            <td>@p.Title</td>
+                            <td>@p.ZipCode</td>
+                            <td>@p.Price</td>
+                            <td>@GetRelativeTime(p.Timestamp)</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </Content>
+        </Tab>
+        <Tab Title="Favoritter" OnClick="@GetFavoritedPosts">
+            <Content>
+                <table class="table">
+                    <colgroup>
+                        <col style="width:50%;"/> @* Title column: flexible *@
+                        <col style="width:15%;"/> @* Postnummer *@
+                        <col style="width:15%;"/> @* Pris *@
+                        <col style="width:20%;"/> @* Dato or owner *@
+                        <col style="width:20%;"/> @* Favorit *@
+                    </colgroup>
+                    <thead>
+                    <tr>
+                        <th>Titel</th>
+                        <th>Postnummer</th>
+                        <th>Pris</th>
+                        <th>Dato</th>
+                        <th></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var p in posts.Where(p => p.State == 1 && FavoritedPosts.Contains(p.Id))){
+                        <tr style="cursor:pointer">
+                            <td @onclick="@(() => GoToPost(p.Id))">@p.Title</td>
+                            <td @onclick="@(() => GoToPost(p.Id))">@p.ZipCode</td>
+                            <td @onclick="@(() => GoToPost(p.Id))">@p.Price</td>
+                            <td @onclick="@(() => GoToPost(p.Id))">@GetRelativeTime(p.Timestamp)</td>
+                            <td>
+                                <ToggleFavoriteButton
+                                    Username="@CurrentUsername"
+                                    PostId="@p.Id"
+                                    IsFavorite="@true"
+                                    Callback="() => { FavoritedPosts.Remove(p.Id); StateHasChanged(); }"/>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </Content>
+        </Tab>
+        <Tab Title="Fulgte brugere" OnClick="@GetFavoritedUsers">
+            <Content>
+                <div class="mb-2">
+                    <h5>Fulgte brugere (@FavoritedUsers.Count)</h5>
+                </div>
+
+                @if (FavoritedUsers != null && FavoritedUsers.Any()){
+                    <div class="d-flex flex-wrap gap-2">
+        @foreach (var username in FavoritedUsers){
+            <div
+                class="d-flex align-items-center border rounded p-2"
+                style="min-width:150px;">
+                <div class="text-decoration-none"
+                     style="cursor:pointer"
+                     @onclick="() => GoToProfile(username)">
+                    @username
+                </div>
+
+                <div class="ms-auto">
+                    <ToggleFavoriteUserButton
+                        Username="@CurrentUsername"
+                        FavoriteUser="@username"
+                        IsFavorite="@(FavoritedUsers.Contains(username))"
+                        Callback="(favorited) => { if (favorited){ FavoritedUsers.Add(username); }else{ FavoritedUsers.Remove(username); } StateHasChanged(); }"/>
+                </div>
+            </div>
+
+
+        }
+    </div>
+                }
+
+            </Content>
+        </Tab>
+    }
+</Tabs>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask { get; set; }
+    [Parameter] public string Profile { get; set; } = string.Empty;
+    public string CurrentUsername { get; set; }
+    public string Username { get; set; }
+    public string ZipCode { get; set; }
+    public string ErrorMessage { get; set; }
+
+
+    public List<PostDTO> posts = []; 
+    private List<PostDTO> filteredPosts = new();
+    private List<PostDTO> contactedPosts = new List<PostDTO>();
+    private List<int> FavoritedPosts { get; set; } = new List<int>();
+    private List<String> FavoritedUsers { get; set; } = new List<String>();
+    
+    public List<CategoryDTO> AllExistingCats { get; set; } = new List<CategoryDTO>();
+    public List<CategoryDTO> SelectedCategories { get; set; } = new List<CategoryDTO>();
+    public List<bool> ChangingCategories { get; set; } = new List<bool>();
+
+    protected async override Task OnParametersSetAsync()
+    {
+        await OnInitializedAsync();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        //om man er den rette bruger tjek
+        if (AuthenticationStateTask != null){
+            var authState = await AuthenticationStateTask;
+            CurrentUsername = authState?.User?.Identity?.Name ?? string.Empty;
+        }
+        //får error hvis den null, så sæt tom
+        else{
+            CurrentUsername = string.Empty;
+        }
+
+        try{
+            var userDto = await UserService.getUserAsync(Profile);
+
+            if (userDto != null){
+                Username = userDto.Username ?? string.Empty;
+                ZipCode = userDto.ZipCode ?? string.Empty;
+            }
+        } catch (Exception e){
+            ErrorMessage = e.InnerException.Message;
+        }
+
+        posts = (await PostService.GetPosts())
+            .OrderBy(p => DateTime.Now.Subtract(MakeStringToTimestamp(p.Timestamp)
+                .GetValueOrDefault(DateTime.MinValue)).TotalSeconds).ToList();
+        filteredPosts = posts.Where(p => p.Owner == Profile).ToList();
+
+        if (CurrentUsername != "")
+            await GetFavoritedUsers();
+
+        if (CurrentUsername == Profile && AllExistingCats.Count == 0)
+        {
+            AllExistingCats = await CategoriesService.GetCategoriesAsync();
+            SelectedCategories = await UserService.GetFavoriteCategoriesAsync(CurrentUsername);
+            
+            ChangingCategories.Clear();
+            for (int i = 0; i < AllExistingCats.Count; i++)
+            {
+                ChangingCategories.Add(SelectedCategories.Any(s => s.Name.Equals(AllExistingCats[i].Name)));
+            }
+        }
+    }
+
+    private void GoToPost(int postId) => NavigationManager.NavigateTo($"posts/{postId}");
+
+    private async Task LogoutAsync()
+    {
+        ErrorMessage = "";
+        try{
+            await GetAuthProvider().Logout();
+            NavigationManager.NavigateTo("/login");
+        } catch (Exception e){
+            ErrorMessage = $"Error: {e.Message}";
+        }
+    }
+
+    private AuthProvider GetAuthProvider()
+    {
+        if (AuthProvider is not AuthProvider provider) throw new Exception("Cannot get Auth Provider");
+        return provider;
+    }
+
+    private DateTime? MakeStringToTimestamp(string Timestamp)
+    {
+        if (DateTime.TryParse(Timestamp, out DateTime result)){
+            return result;
+        }
+        return DateTime.MinValue;
+    }
+
+    private string GetRelativeTime(string timestamp)
+    {
+        var time = MakeStringToTimestamp(timestamp);
+        var span = DateTime.Now - time.Value;
+
+        if (span.TotalHours < 1){
+            return $"Oprettet under en time siden";
+        }
+        if (span.TotalHours < 24){
+            return $"Oprettet {(int)span.TotalHours} time(r) siden";
+        }
+
+        if (span.TotalDays < 7){
+            var days = (int)span.TotalDays;
+            return $"Oprettet {days} dage siden";
+        }
+
+        return $"Oprettet {time.Value.Date.ToShortDateString()}";
+    }
+
+    private async Task EditUser()
+    {
+        ErrorMessage = "";
+        UserDTO changedUser = new UserDTO(){
+            Username = Username, ZipCode = ZipCode
+        };
+
+        if (ZipCode.Length is not (0 or 4))
+            ErrorMessage = "Postnummeret er ikke godkendt";
+        if (!IsDigitsOnly(ZipCode))
+            ErrorMessage = "Postnummeret må kun bestå af tal";
+
+        if (string.IsNullOrEmpty(ErrorMessage)){
+            try{
+                await UserService.EditUserAsync(changedUser, Username);
+                NavigationManager.NavigateTo(NavigationManager.Uri, true);
+            } catch (Exception e){
+                ErrorMessage = e.Message;
+            }
+        }
+
+    }
+
+    bool IsDigitsOnly(string str)
+    {
+        foreach (char c in str){
+            if (c < '0' || c > '9')
+                return false;
+        }
+
+        return true;
+    }
+
+    private void GoToProfile(string username)
+    {
+        NavigationManager.NavigateTo($"/user/{username}", true);
+    }
+
+    private async Task AddFavCats()
+    {
+        List<string> SelectedCategoriesString = new List<string>();
+        
+        for (int i = 0; i < AllExistingCats.Count; i++)
+        {
+            if (ChangingCategories[i])
+            {
+                SelectedCategoriesString.Add(AllExistingCats[i].Name);
+            }
+        }
+        
+        await UserService.ChangeFavoriteCategoriesAsync(CurrentUsername, SelectedCategoriesString);
+        StateHasChanged();
+    }
+
+    private async Task GetFavoritedPosts()
+    {
+        if (CurrentUsername != ""){
+            FavoritedPosts = await UserService.GetFavoritesAsync(CurrentUsername);
+        }
+    }
+
+    private async Task GetContactedPosts()
+    {
+        if (CurrentUsername != "" && Profile == CurrentUsername){
+            
+            contactedPosts = (await ChatService
+                    .GetChatsAsync(CurrentUsername))
+                .Select(c => 
+                    Task.Run(() => PostService.GetPost(c.PostId)).Result)
+                .ToList();
+        }
+    }
+
+    private async Task GetFavoritedUsers()
+    {
+        if (CurrentUsername != ""){
+            FavoritedUsers = (await UserService.GetFavoriteUsersAsync(CurrentUsername)).OrderBy(u => u,StringComparer.OrdinalIgnoreCase).ToList();
+        }
+    }
+}

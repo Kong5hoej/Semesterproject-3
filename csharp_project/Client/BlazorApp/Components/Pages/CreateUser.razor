@@ -1,0 +1,157 @@
+﻿@page "/createuser"
+@using BlazorApp.Services
+@inject IHttpUsersService UsersService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthProvider
+@using System.Security.Cryptography;
+@using BlazorApp.Auth
+
+<div class="h-100 d-flex flex-column align-items-center justify-content-center">
+    <h3 class="m-4">Opret bruger</h3>
+
+    <div class="form-group m-2 w-25">
+        <label>Brugernavn</label>
+        <input @bind="Username" type="text" class="form-control"
+               placeholder="Indtast Brugernavn"
+               required>
+    </div>
+
+    <div class="form-group m-2 w-25">
+        <label>Adgangskode</label>
+        <input @bind="Password" type="password" class="form-control"
+               placeholder="Indtast Adgangskode"
+               required>
+    </div>
+    
+    <div class="form-group m-2 w-25">
+        <label>Gentag adgangskode</label>
+        <input @bind="RePassword" type="password" class="form-control"
+               placeholder="Gentag Adgangskode"
+               required>
+    </div>
+    
+    <div class="form-group m-2 w-25">
+        <label>Postnummer</label>
+        <input @bind="ZipCode" type="text" class="form-control"
+               placeholder="Postnummer"
+               required>
+    </div>
+    
+    <div class="m-3">
+        <NavLink href="/login">Har du et login? Login istedet
+        </NavLink>
+    </div>
+    
+    @if (!string.IsNullOrEmpty(ErrorLabel)){
+        <div class="m-3">
+            <p class="text-danger">@ErrorLabel</p>
+        </div>
+    }
+
+    <div class="m-3">
+        <button class="btn btn-primary" @onclick="SubmitUser">Opret bruger</button>
+    </div>
+</div>
+
+@code {
+    public string ErrorLabel { get; set; }
+    public string Username { get; set; }
+    public string Password { get; set; }
+    public string RePassword { get; set; }
+    public string HashPassword { get; set; }
+    public string ZipCode { get; set; }
+
+    protected override void OnInitialized(){
+        ErrorLabel = "";
+        Username = "";
+        Password = "";
+        RePassword = "";
+        HashPassword = "";
+        ZipCode = "";
+    }
+    
+    public async Task SubmitUser()
+    {
+        ErrorLabel = "";
+        if (string.IsNullOrEmpty(Username))
+            ErrorLabel = "Brugernavnet må ikke være tomt";
+        if (Password != RePassword)
+            ErrorLabel = "Adgangskoderne stemmer ikke overens";
+        if (ZipCode.Length is not (0 or 4))
+            ErrorLabel = "Postnummeret er ikke godkendt";
+        if (!IsDigitsOnly(ZipCode))
+            ErrorLabel = "Postnummeret må kun bestå af tal";
+        if (!IsValidUsername(Username))
+            ErrorLabel = "Brugernavnet overholder ikke kravene (Store og små bogstaver, mellem 3 og 18 karakterer, tal, '_' og '-'";
+        if(!IsValidPassword(Password))
+            ErrorLabel = "Adgangskoden overholder ikke kravene (Store og små bogstaver, mellem 6 og 32 karakterer, tal, '_' og '-'";
+        
+        if (string.IsNullOrEmpty(ErrorLabel))
+        {
+        byte[] inputBytes = System.Text.Encoding.UTF8.GetBytes(Password);
+        SHA256 sha3 = SHA256.Create();
+        HashPassword = Convert.ToBase64String(sha3.ComputeHash(inputBytes));
+        
+        CreateUserDTO createUserDto = new CreateUserDTO() { HashPassword = HashPassword, Username = Username, ZipCode = ZipCode };
+        try
+        {
+            Task.Run(() => UsersService.CreateUserAsync(createUserDto)).Wait();
+            await GetAuthProvider().LoginAsync(new UserAccessDTO(){Username = Username, Password = HashPassword});
+            NavigationManager.NavigateTo("/");
+        }
+        catch (Exception e)
+        {
+            ErrorLabel = e.InnerException.Message;
+        }
+        }
+    }
+    
+    private AuthProvider GetAuthProvider(){
+        if (AuthProvider is not AuthProvider provider) throw new Exception("Cannot get Auth Provider");
+        return provider;
+    }
+    
+    private bool IsValidUsername(string username)
+    {
+        if (username.Length < 3 || username.Length > 18)
+            return false;
+        foreach (char c in username)
+        {
+            if (!IsAllowedChar(c))
+                return false;
+        }
+        return true;
+    }
+    
+    public bool IsValidPassword(string password)
+    {
+        if (password.Length < 6 || password.Length > 32)
+            return false;
+        foreach (char c in password)
+        {
+            if (!IsAllowedChar(c))
+                return false;
+        }
+        return true;
+    }
+    
+    private bool IsAllowedChar(char c)
+    {
+        if (char.IsLetterOrDigit(c))
+            return true;
+        if (c == '_' || c == '-')
+            return true;
+        return false;
+    }
+    
+    bool IsDigitsOnly(string str)
+    {
+        foreach (char c in str)
+        {
+            if (c < '0' || c > '9')
+                return false;
+        }
+
+        return true;
+    }
+}

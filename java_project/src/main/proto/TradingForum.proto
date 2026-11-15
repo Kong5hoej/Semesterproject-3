@@ -1,0 +1,284 @@
+syntax = "proto3";
+option java_multiple_files = true;
+
+package tradingForumGrpc;
+
+message Empty{}
+
+// --- Post ---
+
+message PostDTO{
+  string title = 1;
+  string description = 2;
+  double price = 3;
+  string zipCode = 4;
+  bool wantsToTrade = 5;
+  string soldTo = 6;
+  int32 id = 7;
+  int32 state = 8;
+  string owner = 9;
+  repeated CategoryDTO categories = 10;
+  repeated ImageId imageIds = 11;
+  string timestamp = 12;
+}
+
+message CreatePostDTORequest{
+  string title = 1;
+  string description = 2;
+  double price = 3;
+  string zipCode = 4;
+  bool wantsToTrade = 5;
+  string creator = 6;
+  repeated CategoryDTO categories = 7;
+}
+
+message CreatePostDTOResponse{
+  PostDTO postDto = 1;
+}
+
+message GetPostRequest{
+  int32 id = 1;
+}
+
+message GetPostResponse{
+  PostDTO post = 1;
+}
+
+message EditPostRequest{
+  int32 id = 1;
+  PostDTO post = 2;
+}
+
+message GetPostsResponse{
+  repeated PostDTO post = 1;
+}
+
+service PostService{
+  rpc createPost(CreatePostDTORequest) returns (CreatePostDTOResponse);
+  rpc getPost(GetPostRequest) returns (GetPostResponse);
+  rpc editPost(EditPostRequest) returns (PostDTO);
+  rpc getAllPosts(Empty) returns (GetPostsResponse);
+}
+
+// --- User ---
+
+message UserDTO{
+  string username = 1;
+  string zipCode = 2;
+}
+
+message CreateUserRequest{
+  string username = 1;
+  string password = 2;
+  string zipCode = 3;
+}
+
+message GetUserRequest{
+  string username = 1;
+}
+
+message GetUsersResponse{
+  repeated UserDTO user = 1;
+}
+
+message LoginRequest{
+  string username = 1;
+}
+
+message LoginResponse{
+  string password = 1;
+}
+
+message GetFavoritesResponse{
+  repeated int32 ids = 1;
+}
+
+message ChangeFavoriteDTO{
+  string user = 1;
+  int32 postId = 2;
+  bool favorite = 3;
+}
+
+message ChangeFavoriteUserDTO{
+    string username = 1;
+    string favoriteUsername = 2;
+    bool favorite = 3;
+}
+
+message GetFavoriteUsersRequest{
+    string username = 1;
+}
+
+message GetFavoriteUsersResponse{
+    repeated string favoriteUsernames = 1;
+}
+
+message GetFavoritedByUsersRequest{
+    string username = 1;
+}
+
+message GetFavoriteCategoriesRequest {
+  string username = 1;
+}
+
+message DeleteFavoriteCategoriesRequest {
+  string username = 1;
+}
+
+message GetFavoriteCategoriesResponse {
+  repeated CategoryDTO categories = 1;
+}
+
+message ChangeFavoriteCategoryRequest{
+  string username = 1;
+  string category = 2;
+}
+
+message GetUsersFavoritedByCategoryRequest{
+  string categoryName = 1;
+}
+
+message GetUsersFavoritedByCategoryResponse{
+  repeated UserDTO users = 1;
+}
+
+service UserService{
+  rpc createUser(CreateUserRequest) returns (UserDTO);
+  rpc EditUser(UserDTO) returns (UserDTO);
+  rpc login(LoginRequest) returns (LoginResponse);
+  rpc getUser(GetUserRequest) returns (UserDTO);
+  rpc getAllUsers(Empty) returns (GetUsersResponse);
+  rpc getFavorites(UserDTO) returns (GetFavoritesResponse);
+  rpc changeFavorite(ChangeFavoriteDTO) returns (Empty);
+  rpc changeFavoriteUser(ChangeFavoriteUserDTO) returns (Empty);
+  rpc getFavoriteUsers(GetFavoriteUsersRequest) returns (GetFavoriteUsersResponse);
+  rpc getFavoritedBy(GetFavoritedByUsersRequest) returns (GetUsersResponse);
+  rpc getFavoriteCategories(GetFavoriteCategoriesRequest) returns (GetFavoriteCategoriesResponse);
+  rpc changeFavoriteCategory(ChangeFavoriteCategoryRequest) returns (Empty);
+  rpc deleteAllFavoritedCategories(DeleteFavoriteCategoriesRequest) returns (Empty);
+  rpc getUsersFavoritedByCategory(GetUsersFavoritedByCategoryRequest) returns (GetUsersFavoritedByCategoryResponse);
+}
+
+// --- Image ---
+message ImageDTO{
+  int32 id = 1;
+  bytes data = 2;
+}
+
+message ImageId{
+  int32 id = 1;
+}
+
+message AddImageRequest{
+  int32 postId = 1;
+  bytes data = 2;
+}
+
+service ImageService{
+  rpc getImage(ImageId) returns (ImageDTO);
+  rpc addImage(AddImageRequest) returns (ImageId);
+  rpc deleteImage(ImageId) returns (Empty);
+}
+
+// --- Category ---
+
+message CategoryDTO{
+  string name = 1;
+}
+
+message AllCategoriesResponse{
+  repeated CategoryDTO categories = 1;
+}
+
+service CategoryService{
+  rpc getAllCategories(Empty) returns (AllCategoriesResponse);
+}
+
+// --- Chat ---
+
+message ChatDTO{
+  int32 postId = 1;
+  string receiver = 2;
+  int32 chatId = 3;
+  repeated MessageDTO messages = 4;
+}
+
+message CreateChatDTO{
+  int32 postId = 1;
+  string username = 2;
+}
+
+message GetAllChatsResponse{
+  repeated ChatDTO chats = 1;
+}
+
+message GetChatRequest{
+  string receiverUsername = 1;
+  int32 postId = 2;
+}
+
+message GetSingleChatRequest{
+  int32 chatId = 1;
+}
+
+message GetChatResponse{
+  ChatDTO chat = 1;
+}
+
+service ChatService{
+  rpc getAllMessages(GetChatRequest) returns (GetChatResponse);
+  rpc getChat(GetSingleChatRequest) returns (GetChatResponse);
+  rpc createChat(CreateChatDTO) returns (GetChatResponse);
+  rpc getAllChats(Empty) returns (GetAllChatsResponse);
+}
+
+// --- Message ---
+
+message MessageDTO{
+  string sender = 1;
+  string timeStamp = 2;
+  string message = 3;
+  int32 chatId = 4;
+}
+
+message SendMessageRequest{
+  int32 postId = 1;
+  string buyer = 2;
+  MessageDTO message = 3;
+}
+
+service MessageService{
+  rpc sendMessage(SendMessageRequest) returns (ChatDTO);
+}
+
+// --- Notifications ---
+message NotificationDTO{
+  string user = 1;
+  int32 notificationType = 2;
+  string objectId = 3;
+  string timeStamp = 4;
+  string message = 5;
+  int32 id = 6;
+}
+
+message CreateNotificationRequest{
+  string user = 1;
+  int32 notificationType = 2;
+  string objectId = 3;
+  string message = 4;
+}
+
+message ReadNotificationsRequest{
+  int32 id = 1;
+}
+
+message GetNotificationsResponse{
+  repeated NotificationDTO notifications = 1;
+}
+
+service NotificationService{
+  rpc makeNotification(CreateNotificationRequest) returns (NotificationDTO);
+  rpc readNotifications(ReadNotificationsRequest) returns (Empty);
+  rpc getNotifications(Empty) returns (GetNotificationsResponse);
+}
+

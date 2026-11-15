@@ -1,0 +1,434 @@
+﻿@page "/posts/{PostId:int}"
+@using BlazorApp.Services
+@inject NavigationManager NavigationManager
+@inject IHttpPostsService PostsService
+@inject IHttpImagesService ImagesService
+@inject IHttpCategoriesService CategoriesService
+@inject IHttpChatsService ChatsService
+@inject IJSRuntime JSRuntime
+
+@if (IsOwner()){
+    <div
+        style="margin:6px;padding:6px;border:1px solid lightgrey;background-color: #f7f7f7;"
+        class="row">
+        <div class="col-8">
+            <h2>Ændre dit Opslag</h2>
+
+            <div class="row">
+                <div class="col-sm-3">
+                    <label for>Titel:</label>
+                    <br/>
+                    <input type="text" @bind="Titel" disabled="@(State == 2)"/>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12">
+                    <label>Beskrivelse:</label>
+                    <br/>
+                    <textarea type="text" class="w-75" style="min-height: 128px"
+                              @bind="Description"
+                              disabled="@(State == 2)"> </textarea>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-sm-3">
+                    <label>Pris:</label>
+                    <br/>
+                    
+                    <label for="WantsToTrade">Vil gerne bytte?</label>
+                    <input type="checkbox"
+                           id="WantsToTrade"
+                           @bind="IsWantsToTrade"
+                           disabled="@(State == 2)"/>
+                    
+                    <input type="text" @bind="PriceString"
+                           disabled="@(State == 2 || IsWantsToTrade)"/>
+                    <span>kr.</span>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-sm-1">
+                    <label>Postnummer:</label>
+                    <input type="text" @bind="ZipCode"
+                           disabled="@(State == 2)"/>
+                </div>
+            </div>
+
+            <div class="container">
+                <div class="row">
+                    @if (State != 2 && ImageIds.Count + NewImages.Count < 8){
+                        <div class="col-3 mb-4" style="height: 128px">
+                            <InputFile id="selectedFile" style="display: none"
+                                       OnChange="OnImageAdd"></InputFile>
+                            <input class="w-75 h-100" type="button" value="+"
+                                   onclick="document.getElementById('selectedFile').click();"/>
+                        </div>
+                    }
+                    @foreach (string image in NewImages.Keys){
+                        <div class="col-3 mb-4 position-relative"
+                             style="height: 128px">
+                            <!--p>@image</p-->
+                            <img src="data:image/jpeg;base64, @NewImages[image]"
+                                 class="w-auto mw-100 mh-100">
+                            @if (State != 2){
+                                <button class="btn float-button"
+                                        @onclick="() => OnNewImageDelete(image)">
+                                    X
+                                </button>
+                            }
+                        </div>
+                    }
+                    @foreach (int imageId in ImageIds){
+                        <div class="col-3 mb-4 position-relative"
+                             style="height: 128px">
+                            <img src="@ImagesService.GetImageUrl(imageId)"
+                                 class="w-auto mw-100 mh-100">
+                            @if (State != 2){
+                                <button class="btn float-button"
+                                        @onclick="() => OnImageDelete(imageId)">
+                                    X
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-sm-4">
+                    <label for="category">Kategori</label>
+                    <select @onchange="OnCategoryChange"
+                            class="form-select"
+                            id="category"
+                            style="display:block;"
+                            multiple
+                            disabled="@(State == 2)">
+                        <option value="" disabled>Vælg en kategori ...</option>
+                        @foreach (CategoryDTO categoryDto in Task.Run(CategoriesService.GetCategoriesAsync).Result){
+                            @if (TempCategories.Contains(categoryDto.Name)){
+                                <option selected="">@categoryDto.Name</option>
+                            } else{
+                                <option>@categoryDto.Name</option>
+                            }
+                        }
+                    </select>
+                </div>
+            </div>
+            
+            <p>Dette opslag er <b>@StateString</b></p>
+
+            <label>Køber:</label>
+            <input @bind="Buyer" disabled="@(State == 2)"/>
+
+            @if (State != 2){
+                <button @onclick="ClosePost" class="btn btn-primary"
+                        style="margin-left:12px;"
+                        disabled="@(State == 2)">
+                    Luk opslag
+                </button>
+                <button @onclick="ChangeActive"
+                        class="btn btn-primary">@ChangeStateString</button>
+            }
+        </div>
+
+        <div class="col-4">
+            <h3>Chats</h3>
+            <table class="table">
+                <colgroup>
+                    <col style="width:10%;"/>
+                    <col style="width:80%;"/>
+                    <col style="width:10%;"/>
+                </colgroup>
+                <thead>
+                <tr>
+                    <th>Bruger</th>
+                    <th>Sidste besked</th>
+                    <th>Skrevet</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (ChatDTO chat in Chats){
+                    MessageDTO newestMessage = chat.Messages.OrderByDescending(c => MakeStringToTimestamp(c.TimeStamp).Value.Ticks).First();
+                    <tr style="cursor:pointer"
+                        @onclick="() => GoToChat(chat)">
+                        <td>@chat.Sender</td>
+                        <td>@newestMessage.Message</td>
+                        <td>@newestMessage.TimeStamp.Substring(0, newestMessage.TimeStamp.IndexOf(" "))</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <p>@ErrorMessage</p>
+
+    @if (State != 2){
+        <button @onclick="SavePost" class="btn btn-primary">Gem</button>
+        <button @onclick="CancelPost" class="btn btn-primary">Gå tilbage</button>
+    }
+
+    @if (State == 2){
+        <button @onclick="CancelPost" class="btn btn-primary">Gå tilbage
+        </button>
+    }
+    
+} else if (State == 1){
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-9">
+                <h1 class="d-inline">@Titel</h1>
+                <AuthorizeView>
+                    <Authorized>
+                        <ToggleFavoriteButton
+                            Username="@context.User.Identity.Name"
+                            PostId="@PostId"
+                            class="ms-1"/>
+                    </Authorized>
+                </AuthorizeView>
+                <h6><i>Opprettet af:   
+                    <NavLink class="link-primary">
+                        <span @onclick="() => GoToProfile(Owner)" style="cursor:pointer">@Owner</span>
+                    </NavLink>
+                </i></h6>
+                <h6>
+                    <i>Kategori(er): @(string.Join(", ", Categories.Select(c => c.Name)))</i>
+                </h6>
+            </div>
+            <div class="col-3 text-center rounded border border-primary py-1">
+                @if (!IsWantsToTrade){
+                    <h5>@(Price) kr.</h5>
+                } else{
+                    <h5>Ønsker at bytte</h5>
+                }
+                <h5>Postnummer: @ZipCode</h5>
+                <AuthorizeView>
+                    <Authorized>
+                        <NavLink
+                            href=@($"posts/{PostId}/chats/{CurrentUsername}")
+                            class="btn btn-primary" style="margin-left:12px;">
+                            Kontakt Sælger
+                        </NavLink>
+                    </Authorized>
+                </AuthorizeView>
+            </div>
+        </div>
+    </div>
+    <p class="fs-4">@Description</p>
+    @if (ImageIds.Any()){
+        <Carousel Autoplay="CarouselAutoPlay.StartOnPageLoad"
+                  ShowIndicators="true" class="bg-primary-subtle rounded"
+                  style="height: 512px;">
+            @foreach (int imageId in ImageIds){
+                <CarouselItem Active="@(ImageIds.First() == imageId)">
+                    <Image class="m-auto d-block w-100 object-fit-contain"
+                           style="max-height: 512px"
+                           Src="@ImagesService.GetImageUrl(imageId)"></Image>
+                </CarouselItem>
+            }
+        </Carousel>
+    }
+} else{
+    <p>Dette opslag er ikke tilgængelig.</p>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> AuthenticationStateTask{ get; set; }
+    public string CurrentUsername{ get; set; }
+
+    public string ErrorMessage{ get; set; }
+
+    [Parameter] public int PostId{ get; set; }
+    public string Titel{ get; set; }
+    public string Description{ get; set; }
+    public double Price{ get; set; }
+    public string PriceString{ get; set; }
+    public string ZipCode{ get; set; }
+
+    public int State{ get; set; }
+    public string StateString{ get; set; }
+
+    public string ChangeStateString{ get; set; }
+
+    public bool IsActive{ get; set; }
+
+    public string Buyer{ get; set; } = string.Empty;
+
+    public List<string> TempCategories{ get; set; } = [];
+    public List<CategoryDTO> Categories{ get; set; } = [];
+    public List<int> ImageIds{ get; set; } = [];
+    public Dictionary<string, string> NewImages{ get; set; } = new Dictionary<string, string>();
+    public List<ChatDTO> Chats{ get; set; } = new List<ChatDTO>();
+
+    public string Owner{ get; set; }
+    public bool IsWantsToTrade{ get; set; }
+    public string Timestamp{ get; set; }
+    
+    protected override async Task OnInitializedAsync(){
+        PostDTO postDto = await PostsService.GetPost(PostId);
+
+        //om man er den rette bruger tjek
+        if (AuthenticationStateTask != null){
+            var authState = await AuthenticationStateTask;
+            CurrentUsername = authState?.User?.Identity?.Name ?? string.Empty;
+        }
+        //får error hvis den null, så sæt tom
+        else{
+            CurrentUsername = string.Empty;
+        }
+
+        Titel = postDto.Title;
+        Description = postDto.Description;
+        Price = postDto.Price;
+        PriceString = Price.ToString();
+        ZipCode = postDto.ZipCode;
+        State = postDto.State;
+        StateString = State switch{
+            0 => "Inaktivt",
+            1 => "Aktivt",
+            2 => "Lukket",
+            _ => StateString
+        };
+        ChangeStateString = State switch{
+            0 => "Aktiver opslag",
+            1 => "Deaktiver opslag",
+            _ => ChangeStateString
+        };
+
+        Buyer = postDto.SoldTo;
+
+        Categories = postDto.Categories;
+        for (int i = 0; i < Categories.Count; i++){
+            TempCategories.Add(Categories[i].Name);
+        }
+        
+        ImageIds = postDto.ImageIds;
+        IsActive = State == 1;
+        Owner = postDto.Owner;
+        IsWantsToTrade = postDto.WantsToTrade;
+        Timestamp = postDto.Timestamp;
+        
+        if(IsOwner())
+            Chats = await ChatsService.GetChatsAsync(PostId);
+    }
+
+    public async Task ChangeActive(){
+        ErrorMessage = "";
+
+        ChangePostStateDTO changePostDto = new ChangePostStateDTO(){
+            postId = this.PostId, makeActive = !IsActive
+        };
+        try{
+            //Task.Run(() => PostsService.ChangePostStateAsync(changePostDto)).Wait();
+            await PostsService.ChangePostStateAsync(changePostDto);
+            NavigationManager.NavigateTo(NavigationManager.Uri, true);
+        } catch (Exception e){
+            ErrorMessage = e.Message;
+        }
+    }
+
+    public async Task ClosePost(){
+        ErrorMessage = "";
+
+        // Pop up
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Er du sikker på, at du vil lukke dette opslag?");
+        if (!confirmed) return;
+        
+        ClosePostDTO closePostDto = new ClosePostDTO(){
+            postId = this.PostId, isSold = Buyer != "", soldTo = Buyer
+        };
+        try{
+            await PostsService.ClosePostAsync(closePostDto);
+            NavigationManager.NavigateTo(NavigationManager.Uri, true);
+        } catch (Exception e){
+            ErrorMessage = e.Message;
+        }
+    }
+
+    public void CancelPost(){
+        NavigationManager.NavigateTo("/");
+    }
+
+    public async Task SavePost(){
+        ErrorMessage = "";
+        if (ZipCode.Length is not (0 or 4))
+            ErrorMessage = "Postnummeret er ikke godkendt";
+        if (!Double.TryParse(PriceString, out double newPrice))
+            ErrorMessage = "Prisen skal være et tal";
+
+        if (string.IsNullOrEmpty(ErrorMessage)){
+            Categories = TempCategories.Select(name => new CategoryDTO{ Name = name }).ToList();
+
+            PostDTO changedPost = new PostDTO(){
+                Description = this.Description,
+                Id = this.PostId,
+                Owner = this.Owner,
+                Price = newPrice,
+                SoldTo = this.Buyer,
+                State = State,
+                Title = this.Titel,
+                WantsToTrade = this.IsWantsToTrade,
+                ZipCode = this.ZipCode,
+                Categories = this.Categories,
+                ImageIds = this.ImageIds,
+                Timestamp = this.Timestamp
+            };
+
+            try{
+                await PostsService.ChangePostAsync(changedPost, PostId);
+                await ImagesService.AddImagesToPostAsync(PostId, NewImages.Values.ToList());
+                NavigationManager.NavigateTo("/");
+            } catch (Exception e){
+                ErrorMessage = e.Message;
+            }
+        }
+    }
+
+    private void GoToChat(ChatDTO chat){
+        NavigationManager.NavigateTo($"posts/{PostId}/chats/{chat.Sender}");
+    }
+
+    private DateTime? MakeStringToTimestamp(string Timestamp){
+        if (DateTime.TryParse(Timestamp, out DateTime result)){
+            return result;
+        }
+        return DateTime.MinValue;
+    }
+
+    private async Task<string> GetBase64Image(IBrowserFile image){
+        MemoryStream memoryStream = new MemoryStream();
+        await image.OpenReadStream().CopyToAsync(memoryStream);
+        string base64 = Convert.ToBase64String(memoryStream.ToArray());
+        return base64;
+    }
+
+    public async Task OnImageAdd(InputFileChangeEventArgs files){
+        IBrowserFile file = files.File;
+        NewImages.Add(file.Name, await GetBase64Image(file));
+    }
+
+    public async Task OnNewImageDelete(string image){
+        NewImages.Remove(image);
+    }
+
+    public async Task OnImageDelete(int imageId){
+        ImageIds.Remove(imageId);
+    }
+
+    public bool IsOwner(){
+        return Owner == CurrentUsername;
+    }
+
+    public async Task OnCategoryChange(ChangeEventArgs e){
+        TempCategories = ((string[])e?.Value)?.ToList() ?? new List<string>();
+    }
+    
+    private void GoToProfile(string username)
+    {
+        NavigationManager.NavigateTo($"/user/{username}", true);
+        
+    }
+}

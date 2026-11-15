@@ -1,0 +1,114 @@
+﻿@using BlazorApp.Services
+@using Domain
+@inject AuthenticationStateProvider AuthProvider
+@inject IHttpNotificationService NotificationService
+@inject IHttpChatsService ChatsService
+@inject NavigationManager NavigationManager
+@inject IHttpPostsService PostsService
+
+<nav class="navbar navbar-dark bg-dark px-3 w-100 d-flex align-items-center justify-content-between">
+
+    <NavLink class="navbar-brand fw-bold" href="/">Den grønne avis</NavLink>
+
+    <div class="d-flex align-items-center">
+
+        <AuthorizeView>
+            <Authorized>
+                <ul class="navbar-nav flex-row align-items-center gap-3" @onmouseleave="OutFocus">
+                    
+                    <li class="nav-item position-relative">
+                        <span class="nav-link p-0 notif-icon" @onclick="GetNotifications" style="cursor:pointer;">
+                            <i class="bi bi-inbox"></i>
+                        </span>
+
+                        @if (showNotifications)
+                        {
+                            <div class="dropdown-menu show " style="display:block; position:absolute;" @onmouseleave="OutFocus">
+                                @foreach (var n in Notifications)
+                                { 
+                                    <NavLink class="dropdown-item" @onclick="() => Navigate(n)" href="" >@n.Message</NavLink>
+                                }
+                                @if (Notifications.Count == 0)
+                                {
+                                    <span class="dropdown-item disabled" style="pointer-events:none;">
+                                        Der er ingen notifikationer
+                                    </span>
+                                }
+                            </div>
+                        }
+                    </li>
+
+                    <li class="nav-item" @onmouseenter="OutFocus">
+                        <NavLink class="nav-link user-icon" style="cursor:pointer; color:white; text-align:center;" href="@($"user/{context.User.Identity.Name}")">
+                            <i class="bi bi-person-circle"></i>
+                            <div class="user-name">@context.User.Identity.Name</div>
+                        </NavLink>
+                    </li>
+                </ul>
+            </Authorized>
+
+            <NotAuthorized>
+                <ul class="navbar-nav flex-row align-items-center gap-3">
+                    <li class="nav-item">
+                        <NavLink class="nav-link user-icon" style="cursor:pointer; color:white; text-align:center;" href="login">
+                            <i class="bi bi-people"></i>
+                            <div class="user-name">Login</div>
+                        </NavLink>
+                    </li>
+                </ul>
+            </NotAuthorized>
+        </AuthorizeView>
+
+    </div>
+
+</nav>
+        
+@code
+{
+    
+    private bool showNotifications = false;
+    public List<NotificationDTO> Notifications{ get; set; } = [];
+
+    private void ToggleNotifications()
+    {
+        showNotifications = !showNotifications;
+    }
+
+    private async Task GetNotifications()
+    {
+        if (showNotifications)
+        {
+            showNotifications = !showNotifications;
+        }
+        else
+        {
+            Notifications = (await NotificationService.GetNotifications((await AuthProvider.GetAuthenticationStateAsync()).User.Identity.Name)).OrderByDescending(n => DateTime.Parse(n.Timestamp).Ticks).ToList();
+            showNotifications = !showNotifications;
+        }
+    }
+    
+    private async Task Navigate(NotificationDTO n)
+    {
+        if (n.NotificationType == 0)
+        {
+            ChatDTO chatDTO = await ChatsService.GetChatAsync(IntFromString(n.ObjectId));
+            NavigationManager.NavigateTo($"/posts/{chatDTO.PostId}/chats/{chatDTO.Sender}");
+        }
+        
+        else if (n.NotificationType == 1 || n.NotificationType == 2)
+        {
+            NavigationManager.NavigateTo($"/posts/{IntFromString(n.ObjectId)}");
+        }
+        await NotificationService.ReadNotifications(new ReadNotificationsDTO() { NotificationType = n.NotificationType, ObjectId = n.ObjectId, User = n.User, Message = n.Message});
+        ToggleNotifications();
+    }
+    
+    private void OutFocus() {
+        showNotifications = false;
+    }
+
+    private int IntFromString(string s)
+    {
+        return Int32.Parse(s);
+    }
+}

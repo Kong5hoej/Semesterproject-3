@@ -1,0 +1,216 @@
+﻿@page "/addpost"
+
+@using BlazorApp.Auth
+@using BlazorApp.Services
+@using Microsoft.AspNetCore.Authorization
+@inject NavigationManager NavigationManager
+@inject IHttpPostsService PostsService
+@inject AuthenticationStateProvider AuthProvider
+@inject IHttpCategoriesService CategoriesService
+@inject IHttpUsersService UsersService
+@attribute [Authorize]
+
+<div style="margin:6px;padding:6px;border:1px solid lightgrey;background-color: #f7f7f7;" class="needs-validation">
+    <h1>Opret Opslag</h1>
+
+    <div class="row">
+        <div class="col-sm-8">
+            <label for="Title">Titel</label>
+            <input @bind="Title" type="text" class="form-control"
+                   id="Title"
+                   placeholder="Titel på opslag"
+                   required>
+        </div>
+        <div class="col-sm-8">
+            <label for="Description">Beskrivelse</label>
+            <textarea @bind="Description" class="form-control"
+                      id="Description"
+                      placeholder="Beskrivelse af opslag"
+                      rows="3" required></textarea>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-4 col-sm-4">
+            <label for="Price">Pris</label>
+            <input @bind="PriceString" type="text" class="form-control"
+                   id="Price"
+                   placeholder="Pris"
+                   disabled="@IsWantsToTrade"
+                   required>
+            
+            <label class="form-check-label" for="WantsToTrade">Vil gerne bytte?</label>
+            <input @bind="IsWantsToTrade" class="form-check-input" type="checkbox"
+                   value=""
+                   id="WantsToTrade">
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-4 col-sm-4">
+            <label for="ZipCode">PostNr</label>
+            <input @bind="ZipCode" type="text" class="form-control"
+                   id="ZipCode"
+                   placeholder="PostNr" required>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-sm-4">
+            <label for="Category">Kategori</label>
+            <select @onchange="OnCategoryChange"
+                    class="form-select" 
+                    id="Category"
+                    style="display:block;"
+                    multiple>
+                <option value="" disabled>Vælg en kategori ...</option>
+                @foreach (CategoryDTO categoryDto in Task.Run(CategoriesService.GetCategoriesAsync).Result){
+                    <option>@categoryDto.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-10 col-sm-8">
+            <label for="Images">Billeder</label>
+            <div class="input-group">
+                <InputFile OnChange="OnNewImage" class="form-control" id="Images" accept="image/png, image/jpeg" multiple required></InputFile>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-sm-3">
+            <input @bind="MakeActive" class="form-check-input" type="checkbox"
+                   value=""
+                   id="MakeActive">
+            <label class="form-check-label" for="MakeActive">Aktiver opslag</label>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-sm-3">
+            <p class="text-danger">@ErrorMessage</p>
+        </div>
+    </div>
+
+    <div class="row justify-content-around">
+        <div class="col-8">
+            <button @onclick="SubmitPost" class="btn btn-primary">Gem Opslag
+            </button>
+            <button @onclick="CancelPost" class="btn btn-primary">Fortryd
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    public string ErrorMessage{ get; set; }
+
+    public string Title{ get; set; }
+    public string Description{ get; set; }
+    public string PriceString { get; set; }
+    public double Price = 0;
+    public string ZipCode{ get; set; }
+    public bool IsWantsToTrade { get; set; }
+
+    public List<string> TempCategories { get; set; } = [];
+    public List<CategoryDTO> Categories{ get; set; } = [];
+    public List<IBrowserFile> Images{ get; set; } = [];
+
+    // public string PicturePath{ get; set; }
+    public bool MakeActive{ get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Title = "";
+        Description = "";
+        ZipCode = (await UsersService.getUserAsync((await AuthProvider.GetAuthenticationStateAsync()).User.Identity.Name)).ZipCode;
+        PriceString = "";
+    }
+
+    public async Task SubmitPost()
+    {
+        ErrorMessage = "";
+        if (ZipCode.Length is not 4)
+            ErrorMessage = "Postnummeret er ikke godkendt";
+        if (!IsDigitsOnly(ZipCode))
+            ErrorMessage = "Postnummeret må kun bestå af tal";
+        if (!Double.TryParse(PriceString, out Price) && !IsWantsToTrade)
+            ErrorMessage = "Prisen skal være et tal";
+        
+        List<string> base64Images = new List<string>();
+        foreach(IBrowserFile image in Images){
+            MemoryStream memoryStream = new MemoryStream();
+            await image.OpenReadStream().CopyToAsync(memoryStream);
+            base64Images.Add(Convert.ToBase64String(memoryStream.ToArray()));
+        }
+
+        if (string.IsNullOrEmpty(ErrorMessage))
+        {
+            for (int i = 0; i < TempCategories.Count; i++)
+            {
+                Categories.Add(new CategoryDTO(){Name = TempCategories[i]});
+            }
+            
+            CreatePostDTO createPostDto = new CreatePostDTO()
+            {
+                Title = this.Title, Description = this.Description, Price = this.Price, ZipCode = this.ZipCode, WantsToTrade = IsWantsToTrade,
+                Creator = (await AuthProvider.GetAuthenticationStateAsync()).User.Identity.Name,
+                Images = base64Images, Categories = Categories
+            };
+
+            try
+            {
+                PostDTO postDto = await PostsService.MakePostAsync(createPostDto);
+
+                if (MakeActive)
+                {
+                    ChangePostStateDTO changePostDto = new ChangePostStateDTO() { postId = postDto.Id, makeActive = true };
+                    await PostsService.ChangePostStateAsync(changePostDto);
+                }
+
+                NavigationManager.NavigateTo("/");
+            }
+            catch (Exception e){
+                if (e.InnerException != null)
+                    ErrorMessage = e.InnerException.Message;
+                else
+                    ErrorMessage = e.Message;
+            }
+        }
+    }
+
+    public void CancelPost()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+
+    public void OnNewImage(InputFileChangeEventArgs files){
+        Images.Clear();
+        Images.AddRange(files.GetMultipleFiles());
+    }
+
+    private AuthProvider GetAuthProvider(){
+        if (AuthProvider is not AuthProvider provider) throw new Exception("Cannot get Auth Provider");
+        return provider;
+    }
+    
+    public async Task OnCategoryChange(ChangeEventArgs e)
+    {
+        TempCategories = ((string[])e?.Value).ToList();
+    }
+    
+    bool IsDigitsOnly(string str)
+    {
+        foreach (char c in str)
+        {
+            if (c < '0' || c > '9')
+                return false;
+        }
+
+        return true;
+    }
+    
+}

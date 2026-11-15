@@ -1,0 +1,54 @@
+﻿@using BlazorApp.Services
+@inject IHttpUsersService UserService
+
+<button @onclick="ToggleFavorite"
+        @onmouseenter="OnMouseEnter"
+        @onmouseleave="OnMouseLeave"
+        style="@Style"
+        class="@Class">
+    <i class="@IconClass"></i>
+</button>
+
+@code {
+    private string IconClass{ get; set; } = "bi bi-star";
+    
+    [Parameter]
+    public required string Username{ get; set; }
+    [Parameter]
+    public required int PostId{ get; set; }
+    [Parameter]
+    public required bool? IsFavorite{ get; set; }
+    [Parameter]
+    public Action? Callback{ get; set; }
+
+    [Parameter] public string Style{ get; set; } = "";
+    [Parameter] public string Class{ get; set; } = "";
+
+    protected override async Task OnInitializedAsync(){
+        if (!IsFavorite.HasValue){
+            List<int> favorites = await UserService.GetFavoritesAsync(Username);
+            IsFavorite = favorites.Contains(PostId);
+        }
+        OnMouseLeave();
+    }
+
+    private async Task ToggleFavorite(){
+        IsFavorite = !IsFavorite;
+        await UserService.ChangeFavoriteAsync(Username, PostId, IsFavorite!.Value);
+        if (Callback != null){
+            Callback();
+        }
+    }
+
+    private void OnMouseEnter(){
+        IconClass = "bi bi-star-half";
+    }
+
+    private void OnMouseLeave(){
+        if (IsFavorite!.Value){
+            IconClass = "bi bi-star-fill";
+        } else{
+            IconClass = "bi bi-star";
+        }
+    }
+}

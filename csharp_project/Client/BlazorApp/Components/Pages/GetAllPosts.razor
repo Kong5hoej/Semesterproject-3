@@ -1,0 +1,170 @@
+﻿@page "/"
+
+@using BlazorApp.Services
+
+@rendermode InteractiveServer
+
+@inject NavigationManager NavigationManager
+@inject IHttpPostsService PostsService
+@inject IHttpCategoriesService CategoriesService
+@inject IHttpImagesService ImagesService
+
+<div style="margin:6px;padding:6px;border:1px solid lightgrey;background-color: #f7f7f7;" class="needs-validation">
+    <h1>Opslag</h1>
+    
+    <div class="row d-flex align-items-baseline justify-content-between gap-3">
+        <div class="categoryfield">
+            <label for="validationCustom09" style="font-size: 30px;">Kategori</label>
+            <button class="btn btn-info mb-2 categorybutton" @onclick="OnCategoriesReset">Nulstil</button>
+        </div>
+        <div class="titlefield" >
+            <label for="validationCustom01" style="font-size: 30px;">Filtrer på titel</label>
+            </div>
+        <div class="add-post"></div>
+    </div>
+    
+    <div class="row d-flex align-items-baseline justify-content-between gap-3">
+        <div class="categoryfield">
+            <select @onchange="OnCategoryChange"
+                    class="form-select"
+                    id="validationCustom09"
+                    multiple>
+                @foreach (CategoryDTO categoryDto in Task.Run(CategoriesService.GetCategoriesAsync).Result)
+                {
+                    <option>@categoryDto.Name</option>
+                }
+            </select>
+            <div class="invalid-feedback">Angiv kategori.</div>
+        </div>
+
+        <div class="titlefield">
+            <input @oninput="e => OnFilterChange(e?.Value?.ToString())"
+                   type="text"
+                   class="form-control"
+                   id="validationCustom01"
+                   placeholder="Tast for at filtrere"
+                   required>
+            <div class="valid-feedback">OK!</div>
+            <div class="invalid-feedback">Angiv venligst titel.</div>
+        </div>
+
+        <div class="add-post">
+            <button class="btn btn-info w-100" @onclick="AddPost">Opret opslag</button>
+        </div>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2">
+        <!--div class="col-sm-4"-->
+        @foreach (PostDTO thisPost in FilteredpostDtos)
+        {
+            <div class="col mb-4">
+                <div class="card">
+                    <div class="card-img-top bg-primary-subtle text-center w-100" style="height: 30vh;">
+                        @if (thisPost.ImageIds.Any()){
+                            <img class="card-img-top w-100 object-fit-cover" src="@ImagesService.GetImageUrl(thisPost.ImageIds.First())" alt="Opslag billede" style="height: 30vh;">
+                        }
+                    </div>
+                    <div class="card-body">
+                        <h3 class="card-title">@thisPost.Title</h3>
+                        <p class="card-text">@thisPost.Description</p>
+                        <p class="card-text"><b>Pris:</b> @(thisPost.WantsToTrade ? "Ønsker at bytte." : thisPost.Price + " kr.")</p>
+                        <div>
+                            <span class="card-text"><b>Opslået af:</b> @thisPost.Owner</span>&nbsp;&nbsp;<span class="card-text"><b>PostNr:</b> @thisPost.ZipCode</span>
+                        </div>
+                        <p class="card-text fst-italic">@("Kategori(er): " + string.Join(", ", thisPost.Categories.Select(c => c.Name)))</p>
+                        <AuthorizeView>
+                            <Authorized>
+                                @if (context.User.Identity.Name != thisPost.Owner)
+                                {
+                                    <ToggleFavoriteButton
+                                        Username="@context.User.Identity.Name"
+                                        PostId="@thisPost.Id"
+                                        style="float: right"
+                                        class="ms-1"/>
+                                }
+                            </Authorized>
+                        </AuthorizeView>
+                        <NavLink href="@("posts/" + thisPost.Id)" class="btn btn-primary" style="float: right">Se opslag</NavLink>
+                    </div>
+                </div>
+            </div>
+        }
+        <!-- End Foreach -->
+        <!--/div-->
+    </div>
+
+</div>
+
+@code {
+    public List<string> SelectedCategories = new List<string>();
+    public List<PostDTO> postDtos = []; //new List<PostDTO>();
+
+    // Filtered subset bound to the UI
+    public List<PostDTO> FilteredpostDtos = new();
+
+    private string? SearchText{ get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            postDtos = await PostsService.GetPosts();
+            postDtos = postDtos.OrderByDescending(p => DateTime.Parse(p.Timestamp)).ToList();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("No Data ?");
+            Console.WriteLine(e);
+            throw;
+        }
+        
+
+        // initial full list
+        FilteredpostDtos = postDtos
+            .Where(s => s.State == 1)
+            .ToList();
+    }
+
+    public void AddPost()
+    {
+        NavigationManager.NavigateTo($"/addpost");
+    }
+
+    public async Task OnFilterChange(string newFilter){
+        SearchText = newFilter ?? "";
+        await PerformSearch();
+    }
+
+    public async Task OnCategoryChange(ChangeEventArgs e){
+        SelectedCategories = ((string[]) e.Value).ToList();
+        await PerformSearch();
+    }
+
+    public async Task OnCategoriesReset(){
+        SelectedCategories.Clear();
+        await PerformSearch();
+    }
+
+    private async Task PerformSearch()
+    {
+        FilteredpostDtos = postDtos.Where(s => s.State == 1).ToList();
+        
+        // Add filtering logic here to update FilteredpostDtos based on Text
+        if (!string.IsNullOrWhiteSpace(SearchText)) {
+            var q = SearchText.Trim();
+            FilteredpostDtos = postDtos
+                .Where(i =>
+                    (i.Title ?? string.Empty).Contains(q, StringComparison.OrdinalIgnoreCase)
+                )
+                .Where(s => s.State == 1)
+                .ToList();
+        }
+        
+        if (SelectedCategories.Any()){
+            FilteredpostDtos = FilteredpostDtos
+                .Where(p => p.Categories.Any(c => SelectedCategories.Contains(c.Name)))
+                .Where(s => s.State == 1)
+                .ToList();
+        }
+    }
+}
